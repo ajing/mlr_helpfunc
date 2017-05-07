@@ -3,34 +3,6 @@
 # registerS3method("getFeatureImportanceLearner", "<awesome_new_learner_class>",
   # getFeatureImportanceLearner.<awesome_new_learner_class>)
 
-# create xgboost learner for mlr package
-makeRLearner.regr.xgboost.latest = function() {
-  makeRLearnerRegr(
-    cl = "regr.xgboost.latest",
-    package = "xgboost",
-    par.set = makeParamSet(
-      makeNumericLearnerParam(id = "eta", default = 0.3, lower = 0, upper = 1),
-      makeIntegerLearnerParam(id = "max_depth", default = 6L, lower = 1L),
-      makeNumericLearnerParam(id = "min_child_weight", default = 1, lower = 0),
-      makeNumericLearnerParam(id = "subsample", default = 1, lower = 0, upper = 1),
-      makeNumericLearnerParam(id = "colsample_bytree", default = 1, lower = 0, upper = 1),
-      makeNumericLearnerParam(id = "lambda", default = 0, lower = 0),
-      makeNumericLearnerParam(id = "alpha", default = 0, lower = 0),
-      makeNumericLearnerParam(id = "base_score", default = 0.5, tunable = FALSE),
-      makeIntegerLearnerParam(id = "nthread", lower = 1L, tunable = FALSE),
-      makeIntegerLearnerParam(id = "nrounds", default = 100L, lower = 1L),
-      makeIntegerLearnerParam(id = "silent", default = 0L, lower = 0L, upper = 1L, tunable = FALSE),
-      makeIntegerLearnerParam(id = "verbose", default = 1, lower = 0, upper = 2, tunable = FALSE),
-      makeIntegerLearnerParam(id = "print_every_n", default = 1L, lower = 1L, tunable = FALSE, requires = quote(verbose == 1L))
-      ),
-    par.vals = list(nrounds = 1L, silent = 0L, verbose = 1L),
-    properties = c("numerics", "factors", "weights"),
-    name = "eXtreme Gradient Boosting",
-    short.name = "xgboost",
-    note = "All settings are passed directly, rather than through `xgboost`'s `params` argument. `nrounds` has been set to `1` and `verbose` to `0` by default."
-  )
-}
-
 # create lightGBM learner for mlr package
 makeRLearner.regr.lightGBM.latest = function() {
   makeRLearnerRegr(
