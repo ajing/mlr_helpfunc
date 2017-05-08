@@ -1,11 +1,11 @@
 #' @export
-makeRLearner.classif.xgboost = function() {
-  makeRLearnerClassif(
-    cl = "classif.xgboost",
+makeRLearner.regr.xgboost.mod = function() {
+  makeRLearnerRegr(
+    cl = "regr.xgboost.mod",
     package = "xgboost",
     par.set = makeParamSet(
       # we pass all of what goes in 'params' directly to ... of xgboost
-      # makeUntypedLearnerParam(id = "params", default = list()),
+      #makeUntypedLearnerParam(id = "params", default = list()),
       makeDiscreteLearnerParam(id = "booster", default = "gbtree", values = c("gbtree", "gblinear", "dart")),
       makeIntegerLearnerParam(id = "silent", default = 0L, tunable = FALSE),
       makeNumericLearnerParam(id = "eta", default = 0.3, lower = 0, upper = 1),
@@ -19,115 +19,81 @@ makeRLearner.classif.xgboost = function() {
       makeNumericLearnerParam(id = "lambda", default = 0, lower = 0),
       makeNumericLearnerParam(id = "lambda_bias", default = 0, lower = 0),
       makeNumericLearnerParam(id = "alpha", default = 0, lower = 0),
-      makeUntypedLearnerParam(id = "objective", default = "binary:logistic", tunable = FALSE),
-      makeUntypedLearnerParam(id = "eval_metric", default = "error", tunable = FALSE),
+      makeUntypedLearnerParam(id = "objective", default = "reg:linear", tunable = FALSE),
+      makeUntypedLearnerParam(id = "eval_metric", default = "rmse", tunable = FALSE),
       makeNumericLearnerParam(id = "base_score", default = 0.5, tunable = FALSE),
-      makeNumericLearnerParam(id = "max_delta_step", lower = 0, default = 0),
+
       makeNumericLearnerParam(id = "missing", default = NULL, tunable = FALSE, when = "both",
         special.vals = list(NA, NA_real_, NULL)),
       makeIntegerVectorLearnerParam(id = "monotone_constraints", default = 0, lower = -1, upper = 1),
       makeIntegerLearnerParam(id = "nthread", lower = 1L, tunable = FALSE),
-      makeIntegerLearnerParam(id = "nrounds", default = 1L, lower = 1L),
+      makeIntegerLearnerParam(id = "nrounds", default = 2000L, lower = 2000L, tunable = FALSE),
       # FIXME nrounds seems to have no default in xgboost(), if it has 1, par.vals is redundant
       makeUntypedLearnerParam(id = "feval", default = NULL, tunable = FALSE),
       makeIntegerLearnerParam(id = "verbose", default = 1L, lower = 0L, upper = 2L, tunable = FALSE),
       makeIntegerLearnerParam(id = "print_every_n", default = 1L, lower = 1L, tunable = FALSE,
         requires = quote(verbose == 1L)),
-      makeIntegerLearnerParam(id = "early_stopping_rounds", default = NULL, lower = 1L, special.vals = list(NULL), tunable = FALSE),
+      makeIntegerLearnerParam(id = "early_stopping_rounds", default = 30, lower = 1L, tunable = FALSE),
       makeLogicalLearnerParam(id = "maximize", default = NULL, special.vals = list(NULL), tunable = FALSE),
-      makeDiscreteLearnerParam(id = "sample_type", default = "uniform", values = c("uniform", "weighted"), requires = quote(booster == "dart")),
       makeDiscreteLearnerParam(id = "normalize_type", default = "tree", values = c("tree", "forest"), requires = quote(booster == "dart")),
       makeNumericLearnerParam(id = "rate_drop", default = 0, lower = 0, upper = 1, requires = quote(booster == "dart")),
       makeNumericLearnerParam(id = "skip_drop", default = 0, lower = 0, upper = 1, requires = quote(booster == "dart"))
     ),
-    par.vals = list(nrounds = 1L, verbose = 0L),
-    properties = c("twoclass", "multiclass", "numerics", "prob", "weights", "missings", "featimp"),
+    par.vals = list(verbose = 0L),
+    properties = c("numerics", "weights", "featimp", "missings"),
     name = "eXtreme Gradient Boosting",
     short.name = "xgboost",
-    note = "All settings are passed directly, rather than through `xgboost`'s `params` argument. `nrounds` has been set to `1` and `verbose` to `0` by default. `num_class` is set internally, so do not set this manually.",
+    note = "All settings are passed directly, rather than through `xgboost`'s `params` argument. `nrounds` has been set to `1` and `verbose` to `0` by default.",
     callees = "xgboost"
   )
 }
 
-#' @export
-trainLearner.classif.xgboost = function(.learner, .task, .subset, .weights = NULL,  ...) {
+one_sd_rule = function(metric_val, sd_val) {
+  # here I assume the larger value of metric, the better performance
+  # and the lower index the simpler the model
+  max_m_idx = which.max(metric_val)
+  one_sd_val = metric_val[max_m_idx] - sd_val[max_m_idx]
+  idx_found = min(which(metric_val > one_sd_val))
+  return(max(1, idx_found))
+}
 
-  td = getTaskDesc(.task)
+#' @export
+trainLearner.regr.xgboost.mod = function(.learner, .task, .subset, .weights = NULL,  ...) {
   parlist = list(...)
+
+  parlist$label = getTaskData(.task, .subset, target.extra = TRUE)$target
   parlist$data = data.matrix(getTaskData(.task, .subset, target.extra = TRUE)$data)
-  parlist$label = match(as.character(getTaskData(.task, .subset, target.extra = TRUE)$target), td$class.levels) - 1
-  nc = length(td$class.levels)
 
   if (is.null(parlist$objective))
-    parlist$objective = ifelse(nc == 2L, "binary:logistic", "multi:softprob")
-
-  if (.learner$predict.type == "prob" && parlist$objective == "multi:softmax")
-    stop("objective = 'multi:softmax' does not work with predict.type = 'prob'")
-
-  #if we use softprob or softmax as objective we have to add the number of classes 'num_class'
-  if (parlist$objective %in% c("multi:softprob", "multi:softmax"))
-    parlist$num_class = nc
+    parlist$objective = "reg:linear"
 
   if (!is.null(.weights))
     parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, weight = .weights)
 
+  # Using xgb.cv to determine nrounds
+  parlist$nfold = 10
+  parlist$metrics = parlist$eval_metric
+  parlist$eval_metric = NULL
+  cv = do.call(xgboost::xgb.cv, parlist)
+  
+  cv_eval = cv$evaluation_log
+  cv_mean = cv_eval[[paste("train", parlist$eval_metric, "mean", sep = "_")]]
+  cv_sd = cv_eval[[paste("train", parlist$eval_metric, "std", sep = "_")]]
+  parlist$nrounds = one_sd_rule(cv_mean, cv_sd)
+  
+  parlist$nfold = NULL
+  parlist$eval_metric = parlist$metrics
+  parlist$metrics = NULL
   do.call(xgboost::xgboost, parlist)
 }
 
 #' @export
-predictLearner.classif.xgboost = function(.learner, .model, .newdata, ...) {
-  td = .model$task.desc
+predictLearner.regr.xgboost.mod = function(.learner, .model, .newdata, ...) {
   m = .model$learner.model
-  cls = td$class.levels
-  nc = length(cls)
-  obj = .learner$par.vals$objective
-
-  if (is.null(obj))
-    .learner$par.vals$objective = ifelse(nc == 2L, "binary:logistic", "multi:softprob")
-
-  p = predict(m, newdata = data.matrix(.newdata), ...)
-
-  if (nc == 2L) { #binaryclass
-    if (.learner$par.vals$objective == "multi:softprob") {
-      y = matrix(p, nrow = length(p) / nc, ncol = nc, byrow = TRUE)
-      colnames(y) = cls
-    } else {
-      y = matrix(0, ncol = 2, nrow = nrow(.newdata))
-      colnames(y) = cls
-      y[, 1L] = 1 - p
-      y[, 2L] = p
-    }
-    if (.learner$predict.type == "prob") {
-      return(y)
-    } else {
-      p = colnames(y)[max.col(y)]
-      names(p) = NULL
-      p = factor(p, levels = colnames(y))
-      return(p)
-    }
-  } else { #multiclass
-    if (.learner$par.vals$objective  == "multi:softmax") {
-      return(factor(p, levels = cls)) #special handling for multi:softmax which directly predicts class levels
-    } else {
-      p = matrix(p, nrow = length(p) / nc, ncol = nc, byrow = TRUE)
-      colnames(p) = cls
-      if (.learner$predict.type == "prob") {
-        return(p)
-      } else {
-        ind = max.col(p)
-        cns = colnames(p)
-        return(factor(cns[ind], levels = cns))
-      }
-    }
-  }
+  predict(m, newdata = data.matrix(.newdata), ...)
 }
 
 #' @export
-getFeatureImportanceLearner.classif.xgboost = function(.learner, .model, ...) {
-  mod = getLearnerModel(.model)
-  imp = xgboost::xgb.importance(feature_names = .model$features,
-    model = mod, ...)
-
-  fiv = imp$Gain
-  setNames(fiv, imp$Feature)
+getFeatureImportanceLearner.regr.xgboost.mod = function(.learner, .model, ...) {
+  getFeatureImportanceLearner.classif.xgboost(.learner, .model, ...)
 }
