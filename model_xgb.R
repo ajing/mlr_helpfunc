@@ -1,7 +1,7 @@
 #' @export
-makeRLearner.regr.xgboost.mod = function() {
+makeRLearner.regr.xgboost_mod = function() {
   makeRLearnerRegr(
-    cl = "regr.xgboost.mod",
+    cl = "regr.xgboost_mod",
     package = "xgboost",
     par.set = makeParamSet(
       # we pass all of what goes in 'params' directly to ... of xgboost
@@ -33,7 +33,7 @@ makeRLearner.regr.xgboost.mod = function() {
       makeIntegerLearnerParam(id = "verbose", default = 1L, lower = 0L, upper = 2L, tunable = FALSE),
       makeIntegerLearnerParam(id = "print_every_n", default = 1L, lower = 1L, tunable = FALSE,
         requires = quote(verbose == 1L)),
-      makeIntegerLearnerParam(id = "early_stopping_rounds", default = 30, lower = 1L, tunable = FALSE),
+      makeIntegerLearnerParam(id = "early_stopping_rounds", default = 20, lower = 1L, tunable = FALSE),
       makeLogicalLearnerParam(id = "maximize", default = NULL, special.vals = list(NULL), tunable = FALSE),
       makeDiscreteLearnerParam(id = "normalize_type", default = "tree", values = c("tree", "forest"), requires = quote(booster == "dart")),
       makeNumericLearnerParam(id = "rate_drop", default = 0, lower = 0, upper = 1, requires = quote(booster == "dart")),
@@ -43,9 +43,7 @@ makeRLearner.regr.xgboost.mod = function() {
     properties = c("numerics", "weights", "featimp", "missings"),
     name = "eXtreme Gradient Boosting",
     short.name = "xgboost",
-    note = "All settings are passed directly, rather than through `xgboost`'s `params` argument. `nrounds` has been set to `1` and `verbose` to `0` by default.",
-    callees = "xgboost"
-  )
+    note = "All settings are passed directly, rather than through `xgboost`'s `params` argument. `nrounds` has been set to `1` and `verbose` to `0` by default.")
 }
 
 one_sd_rule = function(metric_val, sd_val) {
@@ -58,7 +56,7 @@ one_sd_rule = function(metric_val, sd_val) {
 }
 
 #' @export
-trainLearner.regr.xgboost.mod = function(.learner, .task, .subset, .weights = NULL,  ...) {
+trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NULL,  ...) {
   parlist = list(...)
 
   parlist$label = getTaskData(.task, .subset, target.extra = TRUE)$target
@@ -67,33 +65,43 @@ trainLearner.regr.xgboost.mod = function(.learner, .task, .subset, .weights = NU
   if (is.null(parlist$objective))
     parlist$objective = "reg:linear"
 
-  if (!is.null(.weights))
-    parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, weight = .weights)
+  if (!is.null(.weights)) {
+    parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, weight = .weights, missing = NaN)
+  } else {
+    parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, weight = .weights, missing = NaN)
+  }
+
 
   # Using xgb.cv to determine nrounds
   parlist$nfold = 10
   parlist$metrics = parlist$eval_metric
   parlist$eval_metric = NULL
   cv = do.call(xgboost::xgb.cv, parlist)
-  
+
   cv_eval = cv$evaluation_log
   cv_mean = cv_eval[[paste("train", parlist$eval_metric, "mean", sep = "_")]]
   cv_sd = cv_eval[[paste("train", parlist$eval_metric, "std", sep = "_")]]
   parlist$nrounds = one_sd_rule(cv_mean, cv_sd)
-  
+
   parlist$nfold = NULL
   parlist$eval_metric = parlist$metrics
   parlist$metrics = NULL
+  parlist$missing = NaN
   do.call(xgboost::xgboost, parlist)
 }
 
 #' @export
-predictLearner.regr.xgboost.mod = function(.learner, .model, .newdata, ...) {
+predictLearner.regr.xgboost_mod = function(.learner, .model, .newdata, ...) {
   m = .model$learner.model
   predict(m, newdata = data.matrix(.newdata), ...)
 }
 
 #' @export
-getFeatureImportanceLearner.regr.xgboost.mod = function(.learner, .model, ...) {
-  getFeatureImportanceLearner.classif.xgboost(.learner, .model, ...)
+getFeatureImportanceLearner.regr.xgboost_mod = function(.learner, .model, ...) {
+  mlr::getFeatureImportanceLearner.regr.xgboost(.learner, .model, ...)
 }
+
+registerS3method("makeRLearner", "regr.xgboost_mod", makeRLearner.regr.xgboost_mod)
+registerS3method("trainLearner", "regr.xgboost_mod", trainLearner.regr.xgboost_mod)
+registerS3method("predictLearner", "regr.xgboost_mod", predictLearner.regr.xgboost_mod)
+registerS3method("getFeatureImportanceLearner", "regr.xgboost_mod", getFeatureImportanceLearner.regr.xgboost_mod)
