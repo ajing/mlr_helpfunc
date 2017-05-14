@@ -39,7 +39,7 @@ makeRLearner.regr.xgboost_mod = function() {
       makeNumericLearnerParam(id = "rate_drop", default = 0, lower = 0, upper = 1, requires = quote(booster == "dart")),
       makeNumericLearnerParam(id = "skip_drop", default = 0, lower = 0, upper = 1, requires = quote(booster == "dart"))
     ),
-    par.vals = list(verbose = 0L),
+    par.vals = list(verbose = 1L),
     properties = c("numerics", "weights", "featimp", "missings"),
     name = "eXtreme Gradient Boosting",
     short.name = "xgboost",
@@ -68,7 +68,7 @@ trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NU
   if (!is.null(.weights)) {
     parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, weight = .weights, missing = NaN)
   } else {
-    parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, weight = .weights, missing = NaN)
+    parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, missing = NaN)
   }
 
 
@@ -78,10 +78,11 @@ trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NU
   parlist$eval_metric = NULL
   cv = do.call(xgboost::xgb.cv, parlist)
 
-  cv_eval = cv$evaluation_log
-  cv_mean = cv_eval[[paste("train", parlist$eval_metric, "mean", sep = "_")]]
-  cv_sd = cv_eval[[paste("train", parlist$eval_metric, "std", sep = "_")]]
-  parlist$nrounds = one_sd_rule(cv_mean, cv_sd)
+ # cv_eval = cv$evaluation_log
+ # cv_mean = cv_eval[[paste("train", parlist$eval_metric, "mean", sep = "_")]]
+ # cv_sd = cv_eval[[paste("train", parlist$eval_metric, "std", sep = "_")]]
+ # parlist$nrounds = one_sd_rule(cv_mean, cv_sd)
+  parlist$nrounds = nrow(cv$evaluation_log)
 
   parlist$nfold = NULL
   parlist$eval_metric = parlist$metrics
