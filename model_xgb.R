@@ -1,5 +1,6 @@
 #' @export
 makeRLearner.regr.xgboost_mod = function() {
+  # for xgboost_0.4-3 mod
   makeRLearnerRegr(
     cl = "regr.xgboost_mod",
     package = "xgboost",
@@ -33,7 +34,7 @@ makeRLearner.regr.xgboost_mod = function() {
       makeIntegerLearnerParam(id = "verbose", default = 1L, lower = 0L, upper = 2L, tunable = FALSE),
       makeIntegerLearnerParam(id = "print_every_n", default = 1L, lower = 1L, tunable = FALSE,
         requires = quote(verbose == 1L)),
-      makeIntegerLearnerParam(id = "early_stopping_rounds", default = 20, lower = 1L, tunable = FALSE),
+      makeIntegerLearnerParam(id = "early.stop.round", default = 20, lower = 1L, tunable = FALSE),
       makeLogicalLearnerParam(id = "maximize", default = NULL, special.vals = list(NULL), tunable = FALSE),
       makeDiscreteLearnerParam(id = "normalize_type", default = "tree", values = c("tree", "forest"), requires = quote(booster == "dart")),
       makeNumericLearnerParam(id = "rate_drop", default = 0, lower = 0, upper = 1, requires = quote(booster == "dart")),
@@ -57,6 +58,9 @@ one_sd_rule = function(metric_val, sd_val) {
 
 #' @export
 trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NULL,  ...) {
+
+  sink(type = c("output", "message"))
+
   parlist = list(...)
 
   parlist$label = getTaskData(.task, .subset, target.extra = TRUE)$target
@@ -76,7 +80,11 @@ trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NU
   parlist$nfold = 10
   parlist$metrics = parlist$eval_metric
   parlist$eval_metric = NULL
+
+  message("[xgboost_mod train] begin to run xgb.cv.")
   cv = do.call(xgboost::xgb.cv, parlist)
+
+  print(cv)
 
  # cv_eval = cv$evaluation_log
  # cv_mean = cv_eval[[paste("train", parlist$eval_metric, "mean", sep = "_")]]
@@ -88,6 +96,8 @@ trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NU
   parlist$eval_metric = parlist$metrics
   parlist$metrics = NULL
   parlist$missing = NaN
+
+  message("[xgboost_mod train] begin to run xgb.train.")
   do.call(xgboost::xgboost, parlist)
 }
 
