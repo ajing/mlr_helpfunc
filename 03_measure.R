@@ -1,5 +1,4 @@
-## measures
-## Define a function that calculates the misclassification rate
+#'
 sens98.fun <- function(task, model, pred, feats, extra.args) {
   spec <- measureTNR(pred$data$truth, pred$data$response, pred$task.desc$negative)
   sens <- measureTPR(pred$data$truth, pred$data$response, pred$task.desc$positive)
@@ -9,7 +8,9 @@ sens98.fun <- function(task, model, pred, feats, extra.args) {
   return(ifelse(spec < 0.98 - tolerance, 0, sens))
 }
 
-## Generate the Measure object
+#' @export sens98
+#' @rdname measures
+#' @format none
 sens98 <- makeMeasure(
   id = "sens98", name = "Sensitivity at fixed Specificity",
   properties = c("classif", "req.pred", "req.truth"),
