@@ -1,6 +1,9 @@
 #' @export
+
+library(xgboost, lib.loc = "~/R/x86_64-pc-linux-gnu-library/3.3")
+
 makeRLearner.regr.xgboost_mod = function() {
-  # for xgboost_0.4-3 mod
+  # for xgboost_0.6-4 mod
   makeRLearnerRegr(
     cl = "regr.xgboost_mod",
     package = "xgboost",
@@ -34,7 +37,7 @@ makeRLearner.regr.xgboost_mod = function() {
       makeIntegerLearnerParam(id = "verbose", default = 1L, lower = 0L, upper = 2L, tunable = FALSE),
       makeIntegerLearnerParam(id = "print_every_n", default = 1L, lower = 1L, tunable = FALSE,
         requires = quote(verbose == 1L)),
-      makeIntegerLearnerParam(id = "early.stop.round", default = 20, lower = 1L, tunable = FALSE),
+      makeIntegerLearnerParam(id = "early_stopping_rounds", default = 20, lower = 1L, tunable = FALSE),
       makeLogicalLearnerParam(id = "maximize", default = NULL, special.vals = list(NULL), tunable = FALSE),
       makeDiscreteLearnerParam(id = "normalize_type", default = "tree", values = c("tree", "forest"), requires = quote(booster == "dart")),
       makeNumericLearnerParam(id = "rate_drop", default = 0, lower = 0, upper = 1, requires = quote(booster == "dart")),
@@ -61,6 +64,10 @@ trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NU
 
   sink(type = c("output", "message"))
 
+  if(packageVersion("xgboost") < '0.6') {
+    warning(paste0("[xgboost_mod train] the xgboost version is too low: ", packageVersion("xgboost")))
+  }
+
   parlist = list(...)
 
   parlist$label = getTaskData(.task, .subset, target.extra = TRUE)$target
@@ -75,6 +82,8 @@ trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NU
     parlist$data = xgboost::xgb.DMatrix(data = parlist$data, label = parlist$label, missing = NaN)
   }
 
+  if(is.null(parlist$eval_metric))
+    stop("[xgboost_mod train][Error] eval_metric cannot be NULL.")
 
   # Using xgb.cv to determine nrounds
   parlist$nfold = 10
@@ -84,18 +93,19 @@ trainLearner.regr.xgboost_mod = function(.learner, .task, .subset, .weights = NU
   message("[xgboost_mod train] begin to run xgb.cv.")
   cv = do.call(xgboost::xgb.cv, parlist)
 
-  print(cv)
-
- # cv_eval = cv$evaluation_log
- # cv_mean = cv_eval[[paste("train", parlist$eval_metric, "mean", sep = "_")]]
- # cv_sd = cv_eval[[paste("train", parlist$eval_metric, "std", sep = "_")]]
- # parlist$nrounds = one_sd_rule(cv_mean, cv_sd)
-  parlist$nrounds = nrow(cv$evaluation_log)
-
   parlist$nfold = NULL
   parlist$eval_metric = parlist$metrics
   parlist$metrics = NULL
-  parlist$missing = NaN
+  parlist$early_stopping_rounds = NULL
+
+    # cv_eval = cv$evaluation_log
+    # cv_mean = cv_eval[[paste("train", parlist$eval_metric, "mean", sep = "_")]]
+    # cv_sd = cv_eval[[paste("train", parlist$eval_metric, "std", sep = "_")]]
+    # parlist$nrounds = one_sd_rule(cv_mean, cv_sd)
+
+  parlist$nrounds = which.min(as.data.frame(cv$evaluation_log)[[paste0("test_", parlist$eval_metric, "_mean")]])
+
+  message(paste0("[xgboost_mod train] The number of nrounds is:", parlist$nrounds))
 
   message("[xgboost_mod train] begin to run xgb.train.")
   do.call(xgboost::xgboost, parlist)
